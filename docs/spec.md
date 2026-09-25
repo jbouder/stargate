@@ -1,4 +1,4 @@
-# Nebari Gateway Console
+# Stargate Console
 
 **A control plane and operations console for Envoy AI Gateway.**
 
@@ -10,9 +10,9 @@ Spec v0.1 · Draft for review
 
 This is a design-complete specification for a v1 that includes the policy engine. Anything marked **VERIFY** is an assumption that must be tested against Envoy AI Gateway v1.x before it hardens into a dependency.
 
-**Codename:** Project Stargate. Use it for the repo and hackathon chatter; it stays out of the UI and any shipped docs.
-**Shipping name:** Nebari Gateway Console.
-**Name in the UI:** Gateway.
+**Shipping name:** Stargate Console.
+**Name in the UI:** Stargate.
+**Repo and chart name:** `stargate`.
 **Request-path filter:** Warden.
 
 **Upstream naming:** Envoy AI Gateway is being renamed Agent Router. This document uses the older name; treat them as the same project and verify CRD and chart names against the current upstream release.
@@ -90,7 +90,7 @@ Secondary: **application developer**, who touches the console twice — once to 
 
 ```
 ┌──────────────┐
-│  Console UI  │  React 19 · TS · Tailwind v4 · nebari-design
+│  Console UI  │  React 19 · TS · Tailwind v4 · shadcn/ui on Base UI
 └──────┬───────┘
        │ REST + SSE (typed client from OpenAPI)
 ┌──────▼─────────────────────────────────────────────┐
@@ -127,7 +127,7 @@ Secondary: **application developer**, who touches the console twice — once to 
 
 ### 4.2 Deployment topology
 
-Delivered as a Helm chart, packaged as a Nebari pack. Namespace `nebari-gateway`.
+Delivered as a Helm chart. It runs on any conformant Kubernetes cluster and assumes no particular distribution. Namespace `stargate`.
 
 - `console` — UI, served as static assets behind the API server
 - `control-plane` — API + reconciler, 2 replicas, leader election on the reconciler
@@ -137,6 +137,16 @@ Delivered as a Helm chart, packaged as a Nebari pack. Namespace `nebari-gateway`
 - `otel-collector` — receives OTLP from the gateway, exports to the receipt store
 
 Dependencies assumed present: Envoy Gateway ≥1.8, Envoy AI Gateway ≥1.0, cert-manager, an ingress with TLS.
+
+**Local development.** The reference dev and CI environment is [kind](https://kind.sigs.k8s.io/) (Kubernetes in Docker). One command (`make dev-up` or equivalent) brings up the whole stack:
+
+1. Create a kind cluster with `extraPortMappings` for 80/443, and expose the gateway as a NodePort on those ports (or run `cloud-provider-kind`) so it answers on `localhost` without a cloud load balancer.
+2. Install Envoy Gateway and Envoy AI Gateway from their upstream Helm charts, plus cert-manager.
+3. Install Postgres (CloudNativePG or a plain StatefulSet; the TimescaleDB image for the receipts instance) and the OTel Collector.
+4. Install this chart with dev values: single replicas, the bundled dev OIDC issuer (§6), Warden in fail-open, content capture off.
+5. Send one request through the gateway and confirm a receipt appears. This is the Phase 0 exit criterion, and it runs in CI on a fresh kind cluster on every PR.
+
+Anything that only exists on a managed cloud cluster (KMS envelope encryption, cloud-IAM credential retrieval, a real load balancer) degrades gracefully on kind and says so in the UI instead of failing.
 
 ### 4.3 Resource ownership: the split
 
@@ -171,7 +181,7 @@ The rule of thumb: **if a product manager would expect to change it without a de
 
 Every CRD-backed resource carries a provenance value derived from the server-side apply field manager, not from a bespoke annotation:
 
-- **`console`** — field manager is `nebari-gateway-console`. Editable in the UI. Reconciled from Postgres. Drift is reverted on the next reconcile loop and reported.
+- **`console`** — field manager is `stargate-console`. Editable in the UI. Reconciled from Postgres. Drift is reverted on the next reconcile loop and reported.
 - **`declarative`** — another field manager owns it (Argo CD, Flux, a human with `kubectl`). Projected read-only into Postgres by an informer. The UI renders it with a provenance badge and a source link.
 - **`adopted`** — was `declarative`, explicitly taken over by an audited console action.
 
@@ -388,7 +398,7 @@ Compiled to a filter bundle Warden can evaluate without allocation per request. 
 - `dryRun=true` supported on policy, route, and budget mutations. Returns the CRD diff and, for policies, the replay result (§7.5.7).
 - Every mutation writes an audit record in the same transaction. No exceptions, no best-effort logging.
 
-Auth: OIDC against Keycloak. Roles map to the `users.role` enum. Service accounts get scoped tokens for CI.
+Auth: OIDC against any compliant provider. Production deployments bring their own issuer (Keycloak, Entra, Okta, Dex); the kind environment bundles Dex with static users, one per role, so the permission model is exercised from day one without external accounts. Roles map to the `users.role` enum. Service accounts get scoped tokens for CI.
 
 ---
 
@@ -422,7 +432,7 @@ Design direction for review:
 - **Type.** Two families: one for interface text, one monospace for identifiers, model names, tokens, money, and hashes. Tabular numerals mandatory everywhere a number can change without the user acting. Money always right-aligned, always the same number of decimal places within a column.
 - **Density.** Three density modes (comfortable / compact / dense) persisted per user. The traffic table defaults to dense; the onboarding flow to comfortable. An SRE and a first-time developer need different products.
 - **Structure.** Borders and rules encode grouping; they are not applied uniformly for style. No card-per-section layout. The traffic and spend surfaces are tables and charts on a shared canvas, not a grid of tiles.
-- **Motion.** One orchestrated moment per surface, at most. New traffic rows get a brief state-change highlight and nothing else — no slide, no fade-in, no stagger. Motion answers a user action (opening a receipt, expanding a diff, confirming an apply) and otherwise stays out of the way. `prefers-reduced-motion` disables all non-essential motion, and the live-traffic highlight degrades to a static left-edge marker. Follow the motion standards already defined in nebari-design's `AGENTS.md`.
+- **Motion.** One orchestrated moment per surface, at most. New traffic rows get a brief state-change highlight and nothing else — no slide, no fade-in, no stagger. Motion answers a user action (opening a receipt, expanding a diff, confirming an apply) and otherwise stays out of the way. `prefers-reduced-motion` disables all non-essential motion, and the live-traffic highlight degrades to a static left-edge marker. Durations and easings come only from the motion tokens in §8; no component declares its own.
 
 Reviewing this against the generic default: the temptation here is a dark console with a neon-green "live" pulse and rounded stat cards, which is what every observability product ships and what an AI would produce for this brief unprompted. The instrument/ledger direction is the deliberate departure — the boldness budget is spent entirely on verdict color and numeric typography, and everything else stays quiet.
 
@@ -477,12 +487,12 @@ The migration is a base URL and a key swap. The onboarding must be shorter than 
 ┌────────────────────────────────────────────────┐
 │ Your gateway key                               │
 │                                                │
-│  ngw_live_7f3a…                    [ Copy ]    │
+│  sg_live_7f3a…                     [ Copy ]    │
 │                                                │
 │  - base_url = "https://api.openai.com/v1"      │
 │  + base_url = "https://gw.example.com/v1"      │
 │  - api_key  = OPENAI_API_KEY                   │
-│  + api_key  = NEBARI_GATEWAY_KEY               │
+│  + api_key  = STARGATE_API_KEY                 │
 │                                    [ Copy ]    │
 │                                                │
 │  ◌ Waiting for your first request…             │
@@ -638,7 +648,7 @@ This is possible because audit records and receipts share an actor identity spac
 
 ### 7.6 Cross-cutting states
 
-Every one of these needs a designed treatment in nebari-design, not an ad-hoc implementation per screen:
+Every one of these needs a designed treatment in the component library (§8), not an ad-hoc implementation per screen:
 
 | State | Treatment |
 |---|---|
@@ -665,15 +675,22 @@ Every one of these needs a designed treatment in nebari-design, not an ad-hoc im
 
 ---
 
-## 8. nebari-design work
+## 8. Component library
 
-Components this product forces into the design system. Each lands in Storybook 9 with tests before it is used in the app.
+The console owns its UI components. The base layer is [shadcn/ui](https://ui.shadcn.com/) generated on [Base UI](https://base-ui.com/) primitives (`shadcn init` with the Base UI option), styled with Tailwind v4, living in the repo under `components/ui`. There is no external design-system package: the code is copied in and owned, which is the shadcn model and the right one for a hackathon.
 
-**New primitives**
+Rules:
+
+- Base UI provides behavior and accessibility (focus management, ARIA, keyboard handling). Never re-implement what it already does.
+- Composition uses Base UI's `render` prop. No `asChild`.
+- Tokens are CSS variables declared in Tailwind's `@theme` and consumed through semantic utilities (`bg-background`, `text-muted-foreground`, `bg-verdict-blocked`). No hard-coded colors or durations in components.
+- Every component below has a story or a fixture before the app uses it. Storybook is fine; a `/dev/components` route in the app that renders each component in every state is also fine and faster to set up.
+
+**Primitives beyond stock shadcn/ui**
 
 | Component | Notes |
 |---|---|
-| `DataTable` | Virtualized, column pinning + resize + reorder, density modes, persisted config |
+| `DataTable` | TanStack Table + TanStack Virtual. Column pinning + resize + reorder, density modes, persisted config |
 | `StreamTable` | `DataTable` plus insertion, freeze-on-hover, in-flight rows, backpressure indicator |
 | `DiffView` | Unified and split, YAML-aware, used for CRD diffs and policy versions |
 | `CodeBlock` | Copy, language tabs, line highlight |
@@ -682,22 +699,27 @@ Components this product forces into the design system. Each lands in Storybook 9
 | `SyncStateIndicator` | synced / applying / failed / drift, live-updating |
 | `FilterBar` | Structured filters, URL-serialized, typeahead on values |
 | `RuleBuilder` | Nested condition tree, action list, keyboard-operable |
-| `Drawer` | Deep-linkable, stacking, focus-trapped |
+| `Drawer` | On Base UI `Dialog`. Deep-linkable, stacking, focus-trapped |
 | `TimeRangePicker` | Absolute + relative, shared global state |
-| `CommandPalette` | ⌘K, with a resolver registry |
+| `CommandPalette` | ⌘K, on Base UI `Combobox` or cmdk, with a resolver registry |
 | `Money`, `TokenCount`, `Duration` | Tabular numerals, locale-aware, consistent precision |
 | `Sparkline`, `StackedArea`, `BarSeries` | Themed on OKLCH tokens, with keyboard-accessible table fallback |
 
-**New tokens**
+**Tokens (in `@theme`)**
 
 - Verdict ramp: allowed / redacted / rerouted / blocked / degraded, each with a foreground, a background, and a border tint at AA contrast in both themes.
 - Sync-state ramp.
 - Density scale (three steps) applied to table row height, cell padding, and control size.
-- Chart series ramp derived from the existing OKLCH ramps, tested for categorical distinguishability under the common color-vision deficiencies.
+- Chart series ramp derived from the neutral and verdict OKLCH ramps, tested for categorical distinguishability under the common color-vision deficiencies.
 
-**Standards to extend**
+**Motion standard**
 
-- Motion guidance in `AGENTS.md` needs a section on continuously-updating surfaces. The existing rules assume user-triggered transitions; live tables need rules about what is allowed to move when the user is not acting.
+There is no external motion guide to inherit, so the rules live here and in the tokens:
+
+- Durations: `--duration-fast` 120ms for state changes and highlights, `--duration-base` 200ms for overlays and drawers, `--duration-slow` 320ms for page-level transitions, which should be rare. Nothing longer.
+- Easing: ease-out for entrances, ease-in for exits, ease-in-out for movement. No spring, no bounce.
+- Continuously-updating surfaces: rows may change color and may be inserted; nothing else moves while the user is not acting. Freeze on hover. Data that arrived while the tab was hidden renders without animation.
+- `prefers-reduced-motion` sets every duration to 0 and swaps the row-arrival highlight for a static left-edge marker.
 
 ---
 
@@ -705,7 +727,7 @@ Components this product forces into the design system. Each lands in Storybook 9
 
 ### 9.1 Credentials
 
-Provider keys never leave the cluster and are never returned by the API, not even to owners, not even masked beyond a prefix. Stored as Kubernetes Secrets referenced by `BackendSecurityPolicy`, with envelope encryption via the cluster KMS. Cloud providers with an OIDC story use short-lived credential retrieval; providers without one require key rotation reminders surfaced in the UI.
+Provider keys never leave the cluster and are never returned by the API, not even to owners, not even masked beyond a prefix. Stored as Kubernetes Secrets referenced by `BackendSecurityPolicy`, with envelope encryption via the cluster KMS where one exists (kind has none; the keys page says so in dev). Cloud providers with an OIDC story use short-lived credential retrieval; providers without one require key rotation reminders surfaced in the UI.
 
 Virtual gateway keys are stored hashed (Argon2id), with a non-secret prefix for identification in logs and UI.
 
@@ -756,7 +778,7 @@ Receipt schema. OTel pipeline into the receipt store. Warden skeleton in the pat
 *Exit:* real traffic through the gateway produces queryable receipts.
 
 **Phase 1 — Observe (4 weeks)**
-Traffic, receipt detail, Overview, Spend. Read-only. `DataTable`, `StreamTable`, `DecisionTrace`, chart primitives into nebari-design.
+Traffic, receipt detail, Overview, Spend. Read-only. `DataTable`, `StreamTable`, `DecisionTrace`, chart primitives into the component library.
 *Exit:* an engineer would rather debug here than in `kubectl logs`.
 
 **Phase 2 — Configure (5 weeks)**
@@ -868,7 +890,6 @@ Open decisions:
 - Compression and continuous-aggregate policy tuning on the receipts hypertable. Set in Phase 0 against real volume estimates, revisited once traffic is real.
 - Whether MCP routing gets first-class UI in v1 or appears only as routes.
 - Receipt signing: nice for evidence claims, adds key management. Defer to Phase 4 unless a design partner needs it sooner.
-- Relationship to the existing `llm-serving-pack` work: this either absorbs it or that becomes the provider-configuration slice of Phase 2. Worth settling before Phase 2 starts.
 
 ---
 

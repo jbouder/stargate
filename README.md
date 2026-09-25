@@ -1,4 +1,4 @@
-# Project Stargate
+# Stargate
 
 A hackathon challenge: build a control plane and operations console for [Envoy AI Gateway](https://aigateway.envoyproxy.io/).
 
@@ -10,7 +10,7 @@ A hackathon challenge: build a control plane and operations console for [Envoy A
 
 ## The challenge
 
-Envoy AI Gateway gives you a provider-agnostic data plane: one OpenAI-compatible API, cross-provider translation, fallback, token-aware rate limiting, quota policy, sealed upstream credentials, and an MCP gateway. What it does not give you is an operations surface. The spec describes one, shipping as the **Nebari Gateway Console**, plus two request-path capabilities the gateway leaves open:
+Envoy AI Gateway gives you a provider-agnostic data plane: one OpenAI-compatible API, cross-provider translation, fallback, token-aware rate limiting, quota policy, sealed upstream credentials, and an MCP gateway. What it does not give you is an operations surface. The spec describes one, shipping as the **Stargate Console**, plus two request-path capabilities the gateway leaves open:
 
 1. **Outbound data protection.** Detect and redact sensitive data before egress, rehydrate on return.
 2. **Inbound response inspection.** Treat model output as untrusted: prompt-injection artifacts, rogue tool calls, exfiltration patterns.
@@ -30,18 +30,20 @@ Two things are non-negotiable:
 1. **Envoy AI Gateway (Agent Router) is the data plane.** Build on it, don't replace it.
 2. **A really nice, genuinely useful UI.** That's the point of the exercise. Judge every decision by whether it makes the console better to use.
 
-Everything else in the spec is a suggested implementation. The design system, the database, the control-plane language, the receipt store, and the telemetry pipeline are all fair game to swap if you have a good reason or just know something else better. Keep the intent of the spec (receipts, ownership visibility, export to YAML) and pick the tools that get you there fastest.
+Everything else in the spec is a suggested implementation. The component library, the database, the control-plane language, the receipt store, and the telemetry pipeline are all fair game to swap if you have a good reason or just know something else better. Keep the intent of the spec (receipts, ownership visibility, export to YAML) and pick the tools that get you there fastest.
 
 ## Architecture at a glance
 
 The spec's suggested shape:
 
-- **Console UI** — React 19, TypeScript, Tailwind v4, nebari-design. Talks to the control plane over REST + SSE with a typed client generated from OpenAPI.
+- **Console UI** — React 19, TypeScript, Tailwind v4, shadcn/ui on Base UI primitives. Components are copied into the repo and owned there; no external design-system package. Talks to the control plane over REST + SSE with a typed client generated from OpenAPI.
 - **Control plane (Go)** — API server, reconciler (server-side apply to AI Gateway CRDs), policy compiler, snapshot service, receipt query.
 - **Warden (Go)** — the Envoy `ext_proc` filter. The only new component in the request path.
 - **Postgres** for config, keys, and audit. **Postgres + TimescaleDB** for request receipts, fed by an OTel Collector.
 
 Full component map, resource-ownership model, and data model are in spec §4 and §5.
+
+The whole thing runs on any Kubernetes cluster. The reference dev and CI target is a [kind](https://kind.sigs.k8s.io/) cluster with Envoy Gateway, Envoy AI Gateway, Postgres, and the OTel Collector installed from upstream charts. Spec §4.2 describes the one-command bring-up; make that your first pull request.
 
 ## Delivery phases
 
@@ -59,6 +61,7 @@ The riskiest work is in the request path, so it goes first. Nothing about the UI
 
 ## Things worth knowing before you start
 
+- **Nothing assumes a particular Kubernetes distribution or identity provider.** Auth is plain OIDC; the dev cluster bundles Dex with one static user per role.
 - **The console must never become the only way to operate the gateway.** Every console-owned resource exports to YAML. Deleting the console leaves a working gateway.
 - Anything marked **VERIFY** in the spec is an assumption. Test it against Envoy AI Gateway 1.x before depending on it.
 - Spec §13 lists implementation gotchas around buffer limits, price snapshots, streaming token counts, and session IDs. Read it before you hit them the hard way.
